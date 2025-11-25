@@ -56,8 +56,8 @@ def markdown_to_html_final(markdown_text):
 
     return html_output
 
-def merge_pdfs(main_pdf_path, new_page_path):
-    """Merges a new page into the main PDF."""
+def merge_pdfs(main_pdf_path, new_page_path, page_number=None):
+    """Merges a new page into the main PDF, optionally at a specific page."""
     try:
         if not os.path.exists(main_pdf_path):
             os.rename(new_page_path, main_pdf_path)
@@ -65,13 +65,30 @@ def merge_pdfs(main_pdf_path, new_page_path):
 
         writer = PdfWriter()
         reader_main = PdfReader(main_pdf_path)
-        for page in reader_main.pages:
-            writer.add_page(page)
-            
         reader_new = PdfReader(new_page_path)
+
+        num_pages_main = len(reader_main.pages)
+
+        # Determine the insertion index. Default to the end.
+        insert_at = num_pages_main
+        if page_number is not None:
+            # A page_number of '0' inserts at the beginning.
+            # A page_number of '6' inserts after page 6 (at index 6).
+            if 0 <= page_number <= num_pages_main:
+                insert_at = page_number
+
+        # Add pages from the main PDF up to the insertion point
+        for i in range(insert_at):
+            writer.add_page(reader_main.pages[i])
+
+        # Add the new page(s)
         for page in reader_new.pages:
             writer.add_page(page)
             
+        # Add the rest of the pages from the main PDF
+        for i in range(insert_at, num_pages_main):
+            writer.add_page(reader_main.pages[i])
+
         with open(main_pdf_path, "wb") as f:
             writer.write(f)
         return True
