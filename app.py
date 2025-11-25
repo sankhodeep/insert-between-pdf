@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QLineEdit
 )
 from PySide6.QtCore import Signal, QObject
+from PySide6.QtGui import QIntValidator
 from pdf_engine import create_pdf_page, merge_pdfs
 
 # --- Communication object for worker thread ---
@@ -15,7 +16,7 @@ class WorkerSignals(QObject):
 
 class PdfWorker(QObject):
     """Worker thread for creating and merging PDFs to keep the UI responsive."""
-    def __init__(self, user_text, model_text, main_pdf_path, show_headings, user_heading, model_heading):
+    def __init__(self, user_text, model_text, main_pdf_path, show_headings, user_heading, model_heading, page_number):
         super().__init__()
         self.signals = WorkerSignals()
         self.user_text = user_text
@@ -24,6 +25,7 @@ class PdfWorker(QObject):
         self.show_headings = show_headings
         self.user_heading = user_heading
         self.model_heading = model_heading
+        self.page_number = page_number
 
     def run(self):
         try:
@@ -36,7 +38,7 @@ class PdfWorker(QObject):
             if not success_create:
                 raise RuntimeError("Failed to create the temporary PDF page.")
 
-            success_merge = merge_pdfs(self.main_pdf_path, temp_page_path)
+            success_merge = merge_pdfs(self.main_pdf_path, temp_page_path, self.page_number)
             if not success_merge:
                 raise RuntimeError("Failed to merge the new page into the main PDF.")
                 
@@ -83,6 +85,17 @@ class MainWindow(QMainWindow):
         file_layout.addWidget(choose_file_button)
         main_layout.addLayout(file_layout)
 
+        # --- Page Number Input ---
+        page_num_layout = QHBoxLayout()
+        page_num_label = QLabel("Insert after page number (leave blank for end):")
+        self.page_num_entry = QLineEdit()
+        self.page_num_entry.setValidator(QIntValidator(0, 99999))
+        self.page_num_entry.setFixedWidth(50)
+        page_num_layout.addWidget(page_num_label)
+        page_num_layout.addWidget(self.page_num_entry)
+        page_num_layout.addStretch()
+        main_layout.addLayout(page_num_layout)
+
         # --- Bottom Bar ---
         bottom_layout = QHBoxLayout()
         self.add_button = QPushButton("Add to PDF")
@@ -112,12 +125,16 @@ class MainWindow(QMainWindow):
         self.add_button.setEnabled(False)
         self.status_label.setText("Status: Processing...")
 
+        page_num_text = self.page_num_entry.text()
+        page_number = int(page_num_text) if page_num_text else None
+
         # --- Setup and run worker thread ---
         self.worker = PdfWorker(
             user_text, model_text, main_pdf_path,
             self.show_headings_check.isChecked(),
             self.user_heading_entry.text().strip(),
-            self.model_heading_entry.text().strip()
+            self.model_heading_entry.text().strip(),
+            page_number
         )
         self.thread = threading.Thread(target=self.worker.run)
         self.worker.signals.finished.connect(self.on_processing_finished)
